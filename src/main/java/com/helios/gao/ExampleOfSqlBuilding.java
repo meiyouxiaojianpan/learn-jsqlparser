@@ -1,14 +1,23 @@
 package com.helios.gao;
 
+import com.helios.gao.utils.SelectUtil;
 import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.expression.Alias;
 import net.sf.jsqlparser.expression.LongValue;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.expression.operators.relational.ItemsListVisitor;
 import net.sf.jsqlparser.expression.operators.relational.MultiExpressionList;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
+import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.select.SelectExpressionItem;
+import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.select.SubSelect;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 一个简单的扩展插入示例
@@ -55,5 +64,28 @@ public class ExampleOfSqlBuilding {
         ((ExpressionList) insert.getItemsList()).getExpressions().add(new LongValue(12));
 
         System.out.println(insert.toString());
+
+        // 输出 table.a
+        SelectExpressionItem selectItem = new SelectExpressionItem();
+        selectItem.setExpression(new Column(new Table("table"),"a"));
+
+        PlainSelect plainSelect = new PlainSelect();
+        List<SelectItem> items = new ArrayList<>();
+        items.add(new SelectExpressionItem(CCJSqlParserUtil.parseExpression("a")));
+        items.add(new SelectExpressionItem(CCJSqlParserUtil.parseExpression("b")));
+        plainSelect.setSelectItems(items);
+
+        plainSelect.setFromItem(new Table("table"));
+
+        plainSelect.setWhere(CCJSqlParserUtil.parseCondExpression("id = 1"));
+        System.out.println(plainSelect);
+
+        //根据输入添加表别名
+        Table table = new Table("table1");
+//        table.setAlias(new Alias("t1", false));
+
+        SelectUtil selectUtil = new SelectUtil();
+        selectUtil.addAliasForTable(table, "t1", false);
+        System.out.println(table);
     }
 }

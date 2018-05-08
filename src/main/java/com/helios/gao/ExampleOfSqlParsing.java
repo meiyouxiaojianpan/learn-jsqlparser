@@ -1,5 +1,6 @@
 package com.helios.gao;
 
+import com.helios.gao.utils.SelectUtil;
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
@@ -60,6 +61,18 @@ public class ExampleOfSqlParsing {
         PlainSelect plainSelect = (PlainSelect) select.getSelectBody();
         Expression expr =  plainSelect.getWhere();
         System.out.println(select9.toString());
+
+        List<Join> joins = getJoin("select t1.a, t2.b from table1 t1 inner join table2 t2 inner join table3 t3 on t1.id = t2.id where t1.id = 1");
+        joins.forEach(i -> System.out.println(i));
+
+        Select select10 = SelectUtils.buildSelectFromTableAndExpressions(new Table("table"), new Column("a"));
+        System.out.println(select10);
+
+        String s = "t1.id";
+        int i = s.indexOf(".");
+        String s1 = s.substring(3);
+        System.out.println(i);
+        System.out.println(s1);
     }
 
     /**
@@ -93,6 +106,13 @@ public class ExampleOfSqlParsing {
             }
         }
         return str_items;
+    }
+
+    public static List<Join> getJoin(String sql) throws JSQLParserException {
+        Select select = (Select) CCJSqlParserUtil.parse(sql);
+        PlainSelect plainSelect = (PlainSelect) select.getSelectBody();
+        List<Join> joins = plainSelect.getJoins();
+        return joins;
     }
 
     /**

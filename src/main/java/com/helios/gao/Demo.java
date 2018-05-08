@@ -1,12 +1,12 @@
 package com.helios.gao;
 
+import com.helios.gao.utils.LeftOrRight;
+import com.helios.gao.utils.SelectUtil;
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.*;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
-import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.select.*;
-import net.sf.jsqlparser.util.TablesNamesFinder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,48 +19,43 @@ public class Demo {
     public static void main(String[] args) throws JSQLParserException {
         String sql = "select a,b from table1 where id=1";
 //        select t1.a, t2.b from table1 t1 inner join table2 t2 on t1.id = t2.id where t1.id=1
-        Select select = transformSelect(sql);
+        Select select = transformSelect(sql, "table2");
         System.out.println(select);
+//        select t3.a, t2.b from table1 t1 inner join table t2 inner join table3 t3 on t1.id = t2.id where t1.id = 1
+
+        Select select1 = transformSelectTwo(select, "table3", "t3");
+        System.out.println(select1);
+
     }
 
-    public static Select transformSelect(String sql) throws JSQLParserException {
+    public static Select transformSelect(String sql, String tableName) throws JSQLParserException {
+        SelectUtil selectUtil = new SelectUtil();
         Select select = (Select) CCJSqlParserUtil.parse(sql);
         PlainSelect plainSelect = (PlainSelect) select.getSelectBody();
 
         //获取需要查询的列名
-        List<SelectItem> selectItems = plainSelect.getSelectItems();
-        List<String> str_items = new ArrayList<>();
-        if (selectItems != null) {
-            for (int i = 0; i < selectItems.size(); i++) {
-                str_items.add(selectItems.get(i).toString());
-            }
-        }
+        List<String> str_items = selectUtil.getColumnList(plainSelect);
 
         //获取 where 部分
-        Expression expr_where = plainSelect.getWhere();
-        //获取左边表达式部分
-        Expression leftExpression = ((BinaryExpression) expr_where).getLeftExpression();
-        //获取右边表达式部分
-        Expression rightExpression = ((BinaryExpression) expr_where).getRightExpression();
+        Expression expr_where = selectUtil.getWhere(plainSelect);
 
         //与 table2 内连接
-        List<Join> joins = new ArrayList<>();
-        Join join = new Join();
-        join.setInner(true);
-        join.setRightItem(new Table("table2"));
-        joins.add(join);
-        plainSelect.setJoins(joins);
+        selectUtil.addInnerJoin(plainSelect, new Table(tableName));
 
-        //获取表名并添加表别名
-        TablesNamesFinder tablesNamesFinder = new TablesNamesFinder();
-        List<String> tableList = tablesNamesFinder.getTableList(select);
+        //获取表名
+        List<String> tableList = selectUtil.getTableName(select);
+        //给表名添加表别名，别名手动输入,可以直接批量定义别名（默认 usaAs 为 false），也可以单个定义别名
         List<Table> tables = new ArrayList<>();
-        for (int i = 0; i < tableList.size(); i++) {
-            Table table = new Table(tableList.get(i));
-            String alias = "t" + (i + 1);
-            table.setAlias(new Alias(alias, false));
-            tables.add(table);
+        List<String> aliasList = new ArrayList<>();
+        aliasList.add("t1");
+        aliasList.add("t2");
+        try {
+            tables =  selectUtil.addAliasForTable(tableList, aliasList);
+        } catch (Exception e) {
+            System.out.println(e);
         }
+
+
 
         //获取表别名
         List<String> tableAliasList = new ArrayList<>();
@@ -69,39 +64,53 @@ public class Demo {
             tableAliasList.add(tableAlias);
         }
 
-        //改变要查询的列
-        for (int i = 0; i < str_items.size(); i++) {
-            String item = tableAliasList.get(i) + "." + str_items.get(i);
-            str_items.set(i, item);
-        }
-
-        //该变原有的查询列
-        SelectItem [] itemList = new SelectItem[str_items.size()];
-        plainSelect.setSelectItems(null);
-        for (int i = 0; i < str_items.size(); i++) {
-            itemList[i] = new SelectExpressionItem(CCJSqlParserUtil.parseExpression(str_items.get(i)));
-            plainSelect.addSelectItems(itemList[i]);
-        }
+        //改变 select items
+        List<String> changed_items = selectUtil.updateSelectItem(str_items, tableAliasList);
 
         //改变原有查询主体
-        String str_left = leftExpression.toString();
+        String str_left = selectUtil.getWhere(plainSelect, LeftOrRight.LEFT).toString();
         String where = tableAliasList.get(0) + "." + str_left + " = " + tableAliasList.get(1) + "." + str_left;
-        Expression where_Expression = (Expression)(CCJSqlParserUtil.parseCondExpression(where));
-        plainSelect.setFromItem(null);
-        plainSelect.setFromItem(tables.get(0));
-        List<Join> joins1 = new ArrayList<>();
-        Join join1 = new Join();
-        join1.setInner(true);
-        join1.setRightItem(tables.get(1));
-        join1.setOnExpression(where_Expression);
-        joins1.add(join1);
-        plainSelect.setJoins(joins1);
+        Expression on_Expression = CCJSqlParserUtil.parseCondExpression(where);
+        //很奇怪明明已经清空了 但是为何还会保留?
+        //很奇怪 重新去创建一个也不可以么？
+        //PlainSelect 对象是一个代理对象?
+//        plainSelect.setFromItem(null);
+
+        //重新创建一个 select 语句，不在原有的语句上做修改
+        Select select1 = selectUtil.buildSelectSql(tables.get(0), changed_items);
+        PlainSelect plainSelect1 = (PlainSelect) select1.getSelectBody();
+        //或许应该从新去创建一个新得语句，而不是在原有得语句上修改
+        selectUtil.addInnerJoin(plainSelect1, tables.get(1), on_Expression);
+
 
         //该变 where 查询条件
-        String str_change_left = tableAliasList.get(0) + "." + leftExpression.toString();
-        Expression change_left = (Expression)(CCJSqlParserUtil.parseCondExpression(str_change_left));
+        String str_change_left = tableAliasList.get(0) + "." + selectUtil.getWhere(plainSelect, LeftOrRight.LEFT).toString();
+        Expression change_left = CCJSqlParserUtil.parseCondExpression(str_change_left);
         ((BinaryExpression) expr_where).setLeftExpression(change_left);
+        //添加 where 查询条件
+        selectUtil.addWhere(plainSelect1, expr_where);
 
-        return select;
+        return select1;
+    }
+
+    public static Select transformSelectTwo(Select select, String tableName, String tableAlias) throws JSQLParserException {
+        Select select1 = new Select();
+        SelectUtil selectUtil = new SelectUtil();
+
+        //连接 table3
+        PlainSelect plainSelect = (PlainSelect) select.getSelectBody();
+        selectUtil.addInnerJoin(plainSelect, new Table(tableName), "t3");
+
+        //获取 selectItem
+        List<String> selectitems = selectUtil.getColumnList(plainSelect);
+        //将 selectItem 中参数 a 的前缀改为 t3
+        selectUtil.replaceColumnPrefix(selectitems, "a", "t3");
+
+        //替换 selectItems
+        List<SelectItem> items = selectUtil.ListToSelectItems(selectitems);
+        plainSelect.setSelectItems(items);
+
+        select1.setSelectBody(plainSelect);
+        return select1;
     }
 }
